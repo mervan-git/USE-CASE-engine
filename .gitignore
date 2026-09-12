@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+
+work/
+__pycache__/
+*.pyc
+outputs/
+.DS_Store
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
