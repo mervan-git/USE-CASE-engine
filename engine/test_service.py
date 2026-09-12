@@ -10,6 +10,7 @@ class Core(unittest.TestCase):
  def test_duplicates(self):
   r=s.start('snijders');c={'start_seconds':30,'end_seconds':36,'description_nl':'test'}
   self.assertTrue(s.add_clip('snijders',r,'abcdefghijk','test',c));self.assertFalse(s.add_clip('snijders',r,'abcdefghijk','test',c))
+  self.assertFalse(s.add_clip('snijders',r,'abcdefghijk','test',{**c,'start_seconds':60,'end_seconds':66}))
  def test_job_idempotency(self):self.assertEqual(s.start('snijders'),s.start('snijders'))
  def test_usage(self):
   self.assertIsNone(s.usage_cost({}));self.assertAlmostEqual(s.usage_cost({'total_input_tokens':1000,'total_output_tokens':100,'total_thought_tokens':100}),.0015)
@@ -24,7 +25,7 @@ class Core(unittest.TestCase):
   research.website=lambda:''
   def ai(prompt,media=None,purpose='planning',vid=''):
    if purpose=='planning':return {'brief':'window washing','queries':['window cleaning']}
-   return {'clips':[{'start_seconds':20,'end_seconds':26,'description_nl':'Wassen'}]}
+   return {'clips':[{'start_seconds':20,'end_seconds':26,'description_nl':'Wassen'},{'start_seconds':30,'end_seconds':36,'description_nl':'Wassen'}]}
   def api(url,provider,purpose,payload=None,vid=''):
    if purpose=='search.list':return {'items':[{'id':{'videoId':'abcdefghijk'},'snippet':{'title':'Cleaning'}}]}
    return {'items':[{'id':'abcdefghijk','contentDetails':{'duration':'PT50S'}}]}

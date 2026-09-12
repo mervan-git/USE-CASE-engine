@@ -64,3 +64,5 @@ Node is alleen nodig voor de optionele JavaScript-syntaxcontrole, niet om de app
 ## Klantgericht zoeken
 
 Naast automatisch ontdekken is er **+ Klantgericht zoeken**. Bewaar een case met klantnaam, website/productpagina, notities en optioneel oude videolinks of uploads. Kies **Case opslaan** om alleen lokaal te bewaren of **Opslaan & zoeken** om een betaalde zoekronde te starten. Resultaten en kosten zijn per case te bekijken. De algemene ontdek-engine blijft onafhankelijk werken; klantgerichte zoekronden worden handmatig gestart.
+
+Elke resultatenlijst toont maximaal één clip per bronvideo. Nieuwe analyses selecteren het beste passende shot; eerdere bronvideo’s worden binnen dezelfde case overgeslagen. Bestaande dubbele fragmenten blijven voor de historische kostenregistratie bewaard, maar worden niet dubbel getoond. Het aantal resultaten blijft begrensd door het analysebudget: tien verschillende video’s kunnen meer analyses vragen dan tien shots uit één video.
