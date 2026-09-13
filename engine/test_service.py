@@ -61,4 +61,17 @@ class Core(unittest.TestCase):
   self.assertIsNone(s.known_video('snijders','casevideo12'))
   self.assertTrue(s.add_clip('snijders',r,'casevideo12','test',c))
   self.assertFalse(s.add_clip('snijders',r,'casevideo12','test',c))
+ def test_ranking_relevance_cost_and_availability(self):
+  items=[{'id':{'videoId':v},'snippet':{'title':title}} for v,title in [('long','window cleaning'),('short','window cleaning'),('irrelevant','cooking'),('private','window cleaning')]]
+  meta={v:{'contentDetails':{'duration':dur}} for v,dur in [('long','PT9M'),('short','PT1M'),('irrelevant','PT30S'),('private','PT1M')]}
+  meta['private']['status']={'privacyStatus':'private'}
+  self.assertEqual([x['id']['videoId'] for x in s.rank_candidates(items,meta,'window cleaning',4)],['short','long','irrelevant'])
+ def test_discovery_prompt_requires_selected_action(self):
+  r=s.start_discovery();research=s.Research(r);prompts=[]
+  def api(url,provider,purpose,payload=None,vid=''):
+   if purpose=='search.list':return {'items':[{'id':{'videoId':'abcdefghijk'},'snippet':{'title':'person walking'}}]}
+   return {'items':[{'id':'abcdefghijk','contentDetails':{'duration':'PT50S'}}]}
+  def ai(prompt,*args):prompts.append(prompt);return {'clips':[]}
+  research.api=api;research.ai=ai;research.work()
+  self.assertIn('Required action category: '+research.c['lane'],prompts[0])
 if __name__=='__main__':unittest.main()
