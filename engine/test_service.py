@@ -74,4 +74,38 @@ class Core(unittest.TestCase):
   def ai(prompt,*args):prompts.append(prompt);return {'clips':[]}
   research.api=api;research.ai=ai;research.work()
   self.assertIn('Required action category: '+research.c['lane'],prompts[0])
+ def test_rate_limit_recovers_and_records_rejection(self):
+  from unittest.mock import patch
+  import io,urllib.error
+  r=s.start('snijders');research=s.Research(r);research.k={'GEMINI_API_KEY':'test'}
+  error=urllib.error.HTTPError('https://example.com',429,'limit',{},io.BytesIO(b'{"error":{"details":[{"retryDelay":"0s"}]}}'))
+  response=io.BytesIO(b'{"usage":{"total_input_tokens":1,"total_output_tokens":1,"total_thought_tokens":0}}')
+  with patch.object(s.urllib.request,'urlopen',side_effect=[error,response]) as request,patch.object(s.time,'monotonic',side_effect=[0,16]):
+   research.api('https://example.com','gemini','planning')
+  self.assertEqual(request.call_count,2)
+  calls=s.rows('SELECT * FROM calls WHERE run=?',(r,))
+  self.assertEqual(calls[0]['cost'],0)
+  self.assertEqual(calls[0]['status'],'HTTP 429 rejected')
+ def test_rate_limit_bounded_and_hard_quota(self):
+  from unittest.mock import patch
+  research=s.Research(s.start('snijders'))
+  with patch.object(research,'api_once',side_effect=s.RateLimit(0)) as call,patch.object(s.time,'monotonic',side_effect=[0,16,20,51]):
+   with self.assertRaisesRegex(s.Halt,'blijft actief'):research.api('x','gemini','planning')
+   self.assertEqual(call.call_count,3)
+  with patch.object(research,'api_once',side_effect=s.RateLimit(0,True)) as call:
+   with self.assertRaisesRegex(s.Halt,'factureringslimiet'):research.api('x','gemini','planning')
+   self.assertEqual(call.call_count,1)
+ def test_rate_limit_wait_can_be_cancelled(self):
+  from unittest.mock import patch
+  r=s.start('snijders');research=s.Research(r)
+  s.execute("UPDATE runs SET status='cancelled' WHERE id=?",(r,))
+  with patch.object(research,'api_once',side_effect=s.RateLimit(30)),patch.object(s.time,'monotonic',return_value=0):
+   with self.assertRaisesRegex(s.Halt,'Gestopt'):research.api('x','gemini','planning')
+ def test_generic_billing_advice_is_not_hard_quota(self):
+  import io,urllib.error
+  def error(body):return urllib.error.HTTPError('https://example.com',429,'limit',{},io.BytesIO(json.dumps(body).encode()))
+  delay,hard=s.rate_limit_info(error({'error':{'message':'Check your plan and billing details','details':[{'retryDelay':'20s'}]}}))
+  self.assertEqual(delay,20);self.assertFalse(hard)
+  _,hard=s.rate_limit_info(error({'error':{'details':[{'quotaId':'RequestsPerDay'}]}}))
+  self.assertTrue(hard)
 if __name__=='__main__':unittest.main()

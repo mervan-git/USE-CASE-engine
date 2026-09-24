@@ -182,6 +182,22 @@ def video_id(url):
  vid=(p.path.strip('/').split('/')[0] if host=='youtu.be' else (urllib.parse.parse_qs(p.query).get('v',[''])[0] or (p.path.split('/')[2] if p.path.startswith(('/shorts/','/embed/')) else ''))) if host in ('youtube.com','www.youtube.com','m.youtube.com','youtu.be') else ''
  return vid if re.fullmatch('[A-Za-z0-9_-]{11}',vid) else None
 class Halt(Exception):pass
+class RateLimit(Halt):
+ def __init__(self,delay,hard=False):self.delay=delay;self.hard=hard
+
+def rate_limit_info(error):
+ try:body=json.loads(error.read(65536))
+ except Exception:body={}
+ text=json.dumps(body).lower()
+ hard=any(x in text for x in ('perday','per_day','daily quota','daily limit','billing disabled','billing not enabled','spend limit'))
+ delay=0
+ try:delay=float(error.headers.get('Retry-After',0))
+ except (ValueError,TypeError,AttributeError):pass
+ for detail in body.get('error',{}).get('details',[]):
+  try:delay=max(delay,float(str(detail.get('retryDelay','0')).rstrip('s')))
+  except (ValueError,TypeError):pass
+ return max(0,delay) if math.isfinite(delay) else 0,hard
+
 class Research:
  def __init__(self,rid):
   self.rid=rid;self.run=one('SELECT * FROM runs WHERE id=?',(rid,));self.c=json.loads(self.run['config']);self.k=keys();self.warnings=[]
@@ -195,6 +211,17 @@ class Research:
   if any(c['cost'] is None and c['status']!='pending' for c in calls):raise Halt('Gestopt: verbruik van een AI-aanroep is onbekend.')
   if sum(c['cost'] or 0 for c in calls)>=self.c['budget']:raise Halt('Budgetdrempel bereikt; geen volgende AI-aanroep gestart.')
  def api(self,url,provider,purpose,payload=None,vid=''):
+  for attempt in range(3):
+   try:return self.api_once(url,provider,purpose,payload,vid)
+   except RateLimit as e:
+    if e.hard:raise Halt('Gemini HTTP 429: dag- of factureringslimiet bereikt. Controleer quota in Google AI Studio.')
+    if attempt==2 or e.delay>120:raise Halt('Gemini HTTP 429 blijft actief. Probeer later opnieuw; opgeslagen resultaten blijven behouden.')
+    delay=max(e.delay,15*2**attempt)
+    self.status(f'Gemini tijdelijk begrensd (HTTP 429). Wacht {math.ceil(delay)} seconden; herpoging {attempt+1}/2.')
+    until=time.monotonic()+delay
+    while time.monotonic()<until:
+     self.check();time.sleep(min(1,max(0,until-time.monotonic())))
+ def api_once(self,url,provider,purpose,payload=None,vid=''):
   self.check();key=self.k.get('GEMINI_API_KEY' if provider=='gemini' else 'YOUTUBE_API_KEY')
   if not key:raise Halt(provider+' API-key ontbreekt in .env.')
   cid=uid();execute('INSERT INTO calls VALUES(?,?,?,?,?,?,?,?,?)',(cid,self.rid,provider,purpose,vid,'pending','{}',None,time.time()))
@@ -206,6 +233,10 @@ class Research:
    execute('UPDATE calls SET status=?,usage=?,cost=? WHERE id=?',('completed',json.dumps(u),cost,cid))
    return result
   except urllib.error.HTTPError as e:
+   if provider=='gemini' and e.code==429:
+    delay,hard=rate_limit_info(e)
+    execute('UPDATE calls SET status=?,usage=?,cost=0 WHERE id=?',('HTTP 429 rejected',json.dumps({'rejected':True,'retry_after_seconds':delay,'hard_quota':hard}),cid))
+    raise RateLimit(delay,hard)
    execute('UPDATE calls SET status=? WHERE id=?',('HTTP '+str(e.code),cid))
    raise Halt(provider+' geeft HTTP '+str(e.code)+'. Controleer API-toegang/quota. Geen automatische retry.')
   except Exception as e:
